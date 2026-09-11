@@ -10,6 +10,7 @@ dependencies = [
     "psycopg[binary]",
     "pydantic-settings",
     "boto3",
+    "redis",
     "langchain",
     "langchain-openai",
     "python-jose[cryptography]",

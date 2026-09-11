@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     debug: bool = False
 
     database_url: str = "postgresql://rag:rag@localhost:5432/rag"
+    redis_url: str = "redis://localhost:6379/0"
 
     s3_endpoint: str = "http://localhost:9000"
     s3_access_key: str = "minioadmin"
