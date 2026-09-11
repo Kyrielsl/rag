@@ -6,7 +6,8 @@ import app.models  # noqa: F401  确保模型注册到 Base.metadata
 from app.api.health import router as health_router
 from app.api.uploads import router as uploads_router
 from app.config import get_settings
-from app.db.session import Base, engine
+from app.db.session import Base, SessionLocal, engine
+from app.services.classification import ensure_default_domains
 from app.storage import get_storage
 
 
@@ -14,6 +15,8 @@ from app.storage import get_storage
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     get_storage().ensure_bucket()
+    with SessionLocal() as db:
+        ensure_default_domains(db)
     yield
 
 

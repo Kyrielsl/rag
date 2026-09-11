@@ -71,3 +71,11 @@ class ExtractOut(BaseModel):
     extracted_status: str
     needs_review: bool
     summary: dict | None = None
+
+
+class ClassifyOut(BaseModel):
+    document_id: str
+    status: str
+    domains: list[str]
+    confidence: float
+    needs_review: bool

@@ -7,9 +7,12 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db.session import get_db
 from app.models.audit import AuditLog
+from app.models.classification import ClassificationRun, DocumentDomain
 from app.models.document import Document
+from app.models.domain import Domain
 from app.models.upload import UploadPart, UploadSession
 from app.schemas.uploads import (
+    ClassifyOut,
     CompleteIn,
     ConfirmOut,
     ExtractOut,
@@ -22,6 +25,7 @@ from app.schemas.uploads import (
     PresignOut,
     SessionOut,
 )
+from app.services.classification import ensure_default_domains, run_classification
 from app.services.extraction import run_extraction
 from app.storage import get_storage
 
@@ -45,10 +49,25 @@ def _run_extraction_best_effort(db: Session, doc: Document) -> None:
     try:
         run_extraction(db, doc)
     except Exception as exc:  # noqa: BLE001 - 提取失败不阻塞上传
+        db.rollback()
         doc.extracted_status = "FAILED"
         doc.needs_review = True
         doc.parse_summary = {"error": str(exc)}
         db.commit()
+
+
+def _run_classification_best_effort(db: Session, doc: Document) -> ClassificationRun | None:
+    try:
+        return run_classification(db, doc)
+    except Exception as exc:  # noqa: BLE001 - 分类失败走兜底
+        db.rollback()
+        ensure_default_domains(db)
+        general = db.scalar(select(Domain).where(Domain.name == "通用"))
+        if general is not None and doc.domain_id is None:
+            doc.domain_id = general.id
+        doc.needs_review = True
+        db.commit()
+        return None
 
 
 @router.post("/instant", response_model=InstantCheckOut)
@@ -271,6 +290,9 @@ def confirm_upload(session_id: str, db: Session = Depends(get_db)) -> ConfirmOut
     db.commit()
 
     _run_extraction_best_effort(db, doc)
+    if doc.extracted_status == "EXTRACTED":
+        _run_classification_best_effort(db, doc)
+
     return ConfirmOut(
         document_id=doc.id,
         status=doc.status,
@@ -287,11 +309,40 @@ def extract_upload(session_id: str, db: Session = Depends(get_db)) -> ExtractOut
     doc = db.get(Document, session.document_id)
 
     _run_extraction_best_effort(db, doc)
+    if doc.extracted_status == "EXTRACTED":
+        _run_classification_best_effort(db, doc)
+
     return ExtractOut(
         document_id=doc.id,
         extracted_status=doc.extracted_status,
         needs_review=doc.needs_review,
         summary=doc.parse_summary,
+    )
+
+
+@router.post("/{session_id}/classify", response_model=ClassifyOut)
+def classify_upload(session_id: str, db: Session = Depends(get_db)) -> ClassifyOut:
+    session = db.get(UploadSession, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    doc = db.get(Document, session.document_id)
+
+    if doc.extracted_status != "EXTRACTED":
+        _run_extraction_best_effort(db, doc)
+    run = _run_classification_best_effort(db, doc)
+
+    domain_names = db.scalars(
+        select(Domain.name)
+        .join(DocumentDomain, DocumentDomain.domain_id == Domain.id)
+        .where(DocumentDomain.document_id == doc.id)
+    ).all()
+
+    return ClassifyOut(
+        document_id=doc.id,
+        status=run.status if run is not None else "failed",
+        domains=list(domain_names),
+        confidence=run.confidence if run is not None else 0.0,
+        needs_review=doc.needs_review,
     )
 
 
