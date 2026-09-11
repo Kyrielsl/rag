@@ -62,3 +62,12 @@ class SessionOut(BaseModel):
 class ConfirmOut(BaseModel):
     document_id: str
     status: str
+    extracted_status: str | None = None
+    needs_review: bool | None = None
+
+
+class ExtractOut(BaseModel):
+    document_id: str
+    extracted_status: str
+    needs_review: bool
+    summary: dict | None = None

@@ -12,6 +12,7 @@ from app.models.upload import UploadPart, UploadSession
 from app.schemas.uploads import (
     CompleteIn,
     ConfirmOut,
+    ExtractOut,
     InitUploadIn,
     InitUploadOut,
     InstantCheckIn,
@@ -21,6 +22,7 @@ from app.schemas.uploads import (
     PresignOut,
     SessionOut,
 )
+from app.services.extraction import run_extraction
 from app.storage import get_storage
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
@@ -37,6 +39,16 @@ def _storage_key(document_id: str, name: str) -> str:
 
 def _write_audit(db: Session, action: str, object_id: str | None, result: str = "success") -> None:
     db.add(AuditLog(subject="system", action=action, object_id=object_id, result=result))
+
+
+def _run_extraction_best_effort(db: Session, doc: Document) -> None:
+    try:
+        run_extraction(db, doc)
+    except Exception as exc:  # noqa: BLE001 - 提取失败不阻塞上传
+        doc.extracted_status = "FAILED"
+        doc.needs_review = True
+        doc.parse_summary = {"error": str(exc)}
+        db.commit()
 
 
 @router.post("/instant", response_model=InstantCheckOut)
@@ -257,7 +269,30 @@ def confirm_upload(session_id: str, db: Session = Depends(get_db)) -> ConfirmOut
     session.status = "CONFIRMED"
     _write_audit(db, "upload_confirm", doc.id)
     db.commit()
-    return ConfirmOut(document_id=doc.id, status=doc.status)
+
+    _run_extraction_best_effort(db, doc)
+    return ConfirmOut(
+        document_id=doc.id,
+        status=doc.status,
+        extracted_status=doc.extracted_status,
+        needs_review=doc.needs_review,
+    )
+
+
+@router.post("/{session_id}/extract", response_model=ExtractOut)
+def extract_upload(session_id: str, db: Session = Depends(get_db)) -> ExtractOut:
+    session = db.get(UploadSession, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    doc = db.get(Document, session.document_id)
+
+    _run_extraction_best_effort(db, doc)
+    return ExtractOut(
+        document_id=doc.id,
+        extracted_status=doc.extracted_status,
+        needs_review=doc.needs_review,
+        summary=doc.parse_summary,
+    )
 
 
 @router.delete("/{session_id}")

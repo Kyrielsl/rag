@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.session import Base
@@ -20,5 +20,8 @@ class Document(Base):
     status: Mapped[str] = mapped_column(String(32), default="INITIATED", index=True)
     domain_id: Mapped[str | None] = mapped_column(ForeignKey("domain.id"), nullable=True)
     sensitive: Mapped[bool] = mapped_column(Boolean, default=False)
+    extracted_status: Mapped[str] = mapped_column(String(32), default="PENDING", index=True)
+    needs_review: Mapped[bool] = mapped_column(Boolean, default=False)
+    parse_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
