@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     llm_model: str = "deepseek-chat"
 
     jwt_secret: str = ""
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60
+
+    admin_username: str = "admin"
+    admin_password: str = "admin123"
 
 
 @lru_cache

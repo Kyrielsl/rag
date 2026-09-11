@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.api.deps import require_upload_access
 from app.db.session import get_db
 from app.models.audit import AuditLog
 from app.models.classification import ClassificationRun, DocumentDomain
@@ -29,7 +30,7 @@ from app.services.classification import ensure_default_domains, run_classificati
 from app.services.extraction import run_extraction
 from app.storage import get_storage
 
-router = APIRouter(prefix="/uploads", tags=["uploads"])
+router = APIRouter(prefix="/uploads", tags=["uploads"], dependencies=[Depends(require_upload_access)])
 
 MULTIPART_THRESHOLD = 10 * 1024 * 1024  # 10MB
 CHUNK_SIZE = 5 * 1024 * 1024  # 5MB
