@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     app_name: str = "RAG Knowledge Base"
     debug: bool = False
 
-    database_url: str = "postgresql://rag:rag@localhost:5432/rag"
+    database_url: str = "postgresql+psycopg://rag:rag@localhost:5432/rag"
     redis_url: str = "redis://localhost:6379/0"
 
     s3_endpoint: str = "http://localhost:9000"
