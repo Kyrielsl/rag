@@ -11,6 +11,7 @@ from app.models.document import Document
 from app.models.domain import Domain
 from app.models.extraction import ExtractedContent
 from app.schemas.console import (
+    CustomerFieldsIn,
     AdminDocumentDetail,
     AuditItem,
     DashboardOut,
@@ -176,3 +177,32 @@ def update_domain(domain_id: str, body: DomainUpdateIn, db: Session = Depends(ge
         domain.is_sensitive = body.is_sensitive
     db.commit()
     return {"id": domain.id, "name": domain.name, "enabled": domain.enabled, "is_sensitive": domain.is_sensitive}
+
+@router.patch("/documents/{document_id}/customer-fields")
+def save_customer_fields(document_id: str, body: CustomerFieldsIn, db: Session = Depends(get_db)) -> dict:
+    doc = db.get(Document, document_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="document not found")
+
+    content = db.scalar(select(ExtractedContent).where(ExtractedContent.document_id == document_id))
+    if content is None:
+        content = ExtractedContent(document_id=document_id, text="")
+        db.add(content)
+
+    normalized: dict = {}
+    for key, value in body.fields.items():
+        k = str(key)
+        if k in ("phone", "email"):
+            normalized[k] = value if isinstance(value, list) else [value]
+        else:
+            normalized[k] = value[0] if isinstance(value, list) and value else value
+
+    merged = dict(content.fields or {})
+    merged.update(normalized)
+    content.fields = merged
+
+    doc.needs_review = False
+    if doc.status not in ("READY",):
+        doc.status = "READY"
+    db.commit()
+    return {"document_id": document_id, "fields": content.fields}

@@ -1,4 +1,5 @@
 from app.extractors.base import Extractor, ExtractionResult
+from app.services.customer_rules import extract_pii
 
 
 class TxtExtractor(Extractor):
@@ -7,11 +8,18 @@ class TxtExtractor(Extractor):
 
     def extract(self, data: bytes) -> ExtractionResult:
         text, encoding = self._decode(data)
+        pii = extract_pii(text)
+        fields = {k: [v] for k, v in pii.items()}
         lines = text.count("\n") + (0 if text.endswith("\n") else 1)
         return ExtractionResult(
             text=text,
+            fields=fields,
             encoding=encoding,
-            summary={"lines": lines, "chars": len(text)},
+            summary={
+                "lines": lines,
+                "chars": len(text),
+                "customer_hit": bool(pii),
+            },
         )
 
     @staticmethod

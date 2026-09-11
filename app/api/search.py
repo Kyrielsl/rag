@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import String, cast, func, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
@@ -47,7 +48,7 @@ def _audit_search(db: Session, body: SearchIn, user: User | None, api_key: ApiKe
         db,
         action="search",
         subject=(user.username if user else api_key.name),
-        query_summary=f"q={body.q}, type={body.type}, domain={body.domain}",
+        query_summary=f"q={body.q}, name={body.name}, phone={body.phone}, email={body.email}",
         hit_count=total,
         sensitive_hit=body.domain is not None,
     )
@@ -71,8 +72,6 @@ def search(
         return SearchOut(items=[], total=0, page=body.page, limit=body.limit)
 
     filters = []
-    if body.name:
-        filters.append(Document.name == body.name)
     if body.type:
         filters.append(Document.type == body.type)
     if body.status:
@@ -94,6 +93,47 @@ def search(
         like = f"%{body.q}%"
         filters.append(
             Document.id.in_(select(ExtractedContent.document_id).where(ExtractedContent.text.ilike(like)))
+        )
+
+    if body.name:
+        filters.append(
+            Document.id.in_(
+                select(ExtractedContent.document_id).where(
+                    ExtractedContent.fields.op('->>')('name').ilike(f'%{body.name}%')
+                )
+            )
+        )
+    if body.company:
+        filters.append(
+            Document.id.in_(
+                select(ExtractedContent.document_id).where(
+                    ExtractedContent.fields.op('->>')('company').ilike(f'%{body.company}%')
+                )
+            )
+        )
+    if body.city:
+        filters.append(
+            Document.id.in_(
+                select(ExtractedContent.document_id).where(
+                    ExtractedContent.fields.op('->>')('city').ilike(f'%{body.city}%')
+                )
+            )
+        )
+    if body.phone:
+        filters.append(
+            Document.id.in_(
+                select(ExtractedContent.document_id).where(
+                    func.jsonb_exists(cast(ExtractedContent.fields["phone"], JSONB), body.phone)
+                )
+            )
+        )
+    if body.email:
+        filters.append(
+            Document.id.in_(
+                select(ExtractedContent.document_id).where(
+                    func.jsonb_exists(cast(ExtractedContent.fields["email"], JSONB), body.email)
+                )
+            )
         )
 
     forbidden = select(DocumentDomain.document_id).where(DocumentDomain.domain_id.not_in(allowed))

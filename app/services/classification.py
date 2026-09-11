@@ -11,6 +11,7 @@ from app.models.document import Document
 from app.models.domain import Domain
 from app.models.extraction import ExtractedContent
 from app.services.audit import write_audit
+from app.services.customer_rules import fields_hit, filename_hit
 
 DEFAULT_DOMAINS = [("客户", True), ("产品", False), ("合同", True), ("通用", False)]
 SINGLE_THRESHOLD = 0.7
@@ -40,15 +41,64 @@ def _build_input(document: Document, content: ExtractedContent | None) -> str:
     return "\n".join(parts)
 
 
+def _run_rules(db: Session, document: Document, content: ExtractedContent | None) -> ClassificationRun | None:
+    hit = filename_hit(document.name) or fields_hit(content.fields if content else None)
+    if not hit:
+        return None
+
+    customer = db.scalar(select(Domain).where(Domain.name == "客户"))
+    if customer is None:
+        return None
+
+    for old in db.scalars(select(DocumentDomain).where(DocumentDomain.document_id == document.id)).all():
+        db.delete(old)
+
+    db.add(
+        DocumentDomain(
+            document_id=document.id,
+            domain_id=customer.id,
+            confidence=1.0,
+            source="rule",
+            reviewed=document.type == "txt",
+        )
+    )
+    document.domain_id = customer.id
+    document.sensitive = True
+    document.needs_review = document.type == "txt"
+
+    input_text = _build_input(document, content)
+    run = ClassificationRun(
+        document_id=document.id,
+        model="rules",
+        model_version="0.1.0",
+        prompt_version="0.1.0",
+        input_hash=hashlib.sha256(input_text.encode("utf-8")).hexdigest(),
+        raw_output="customer rule matched",
+        confidence=1.0,
+        latency_ms=0,
+        status="success",
+    )
+    db.add(run)
+    write_audit(db, action="classify", subject="system", object_id=document.id, result="success")
+    db.commit()
+    db.refresh(run)
+    return run
+
+
 def run_classification(db: Session, document: Document) -> ClassificationRun:
     ensure_default_domains(db)
+    content = db.scalar(
+        select(ExtractedContent).where(ExtractedContent.document_id == document.id)
+    )
+
+    rule_run = _run_rules(db, document, content)
+    if rule_run is not None:
+        return rule_run
+
     available = [d.name for d in db.scalars(select(Domain).where(Domain.enabled == True)).all()]
     if "通用" not in available:
         available.append("通用")
 
-    content = db.scalar(
-        select(ExtractedContent).where(ExtractedContent.document_id == document.id)
-    )
     input_text = _build_input(document, content)
     input_hash = hashlib.sha256(input_text.encode("utf-8")).hexdigest()
 

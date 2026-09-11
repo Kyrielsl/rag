@@ -2,6 +2,7 @@ import csv
 import io
 
 from app.extractors.base import Extractor, ExtractionResult
+from app.services.customer_rules import FIELD_ALIASES, normalize_fields
 
 
 class CsvExtractor(Extractor):
@@ -15,7 +16,6 @@ class CsvExtractor(Extractor):
 
         warnings: list[str] = []
         rows: list[dict] = []
-        fields: dict = {}
         header: list[str] = []
 
         for idx, raw in enumerate(reader):
@@ -27,10 +27,10 @@ class CsvExtractor(Extractor):
             if len(raw) != len(header):
                 warnings.append(f"row {idx} has {len(raw)} columns, expected {len(header)}")
                 raw = (raw + [""] * len(header))[: len(header)]
-            rows.append(dict(zip(header, raw)))
+            row = normalize_fields(dict(zip(header, raw)))
+            rows.append(row)
 
-        if header:
-            fields = {col: "" for col in header}
+        fields = self._collect_fields(rows)
 
         return ExtractionResult(
             text=text,
@@ -39,8 +39,22 @@ class CsvExtractor(Extractor):
             encoding=encoding,
             delimiter=delimiter,
             warnings=warnings,
-            summary={"rows": len(rows), "columns": len(header), "delimiter": delimiter},
+            summary={"rows": len(rows), "columns": len(header), "delimiter": delimiter, "customer_hit": bool(fields)},
         )
+
+    @staticmethod
+    def _collect_fields(rows: list[dict]) -> dict:
+        fields: dict = {}
+        for canonical in FIELD_ALIASES:
+            values = [str(row[canonical]).strip() for row in rows if row.get(canonical)]
+            if not values:
+                continue
+            unique = list(dict.fromkeys(values))
+            if canonical in ("phone", "email"):
+                fields[canonical] = unique
+            else:
+                fields[canonical] = ", ".join(unique)
+        return fields
 
     @staticmethod
     def _decode(data: bytes) -> tuple[str, str]:

@@ -96,3 +96,5 @@ export const createDomain = (name: string, is_sensitive: boolean) =>
 
 export const updateDomain = (id: string, body: { enabled?: boolean; is_sensitive?: boolean }) =>
   http.patch(`/admin/domains/${id}`, body).then((r) => r.data)
+export const saveCustomerFields = (id: string, fields: Record<string, any>) =>
+  http.patch(`/admin/documents/${id}/customer-fields`, { fields }).then((r) => r.data)

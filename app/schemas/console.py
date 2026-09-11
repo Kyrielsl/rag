@@ -74,3 +74,5 @@ class AdminDocumentDetail(BaseModel):
     created_at: datetime
     domains: list[DomainAssignmentOut]
     content: ExtractedContentOut | None
+class CustomerFieldsIn(BaseModel):
+    fields: dict

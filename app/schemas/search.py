@@ -6,6 +6,10 @@ from pydantic import BaseModel
 class SearchIn(BaseModel):
     q: str | None = None
     name: str | None = None
+    company: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    city: str | None = None
     type: str | None = None
     domain: str | None = None
     status: str | None = None

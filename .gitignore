@@ -39,3 +39,5 @@ web/dist/
 # Project docs & domain model (local-only)
 docs/
 CONTEXT.md
+# Sample files (local-only)
+samples/
