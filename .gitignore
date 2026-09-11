@@ -29,6 +29,9 @@ build/
 data/
 storage/
 
+# TLS certificates (local-only)
+deploy/certs/
+
 # Project docs & domain model (local-only)
 docs/
 CONTEXT.md
