@@ -4,9 +4,9 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import (
     allowed_domain_ids,
+    ensure_search_access,
     get_optional_api_key,
     get_optional_user,
-    ensure_search_access,
 )
 from app.db.session import get_db
 from app.models.auth import ApiKey, User
@@ -15,6 +15,7 @@ from app.models.document import Document
 from app.models.domain import Domain
 from app.models.extraction import ExtractedContent
 from app.schemas.search import DocumentHit, SearchIn, SearchOut
+from app.services.audit import write_audit
 
 router = APIRouter(tags=["search"])
 
@@ -30,16 +31,27 @@ def _domain_names(db: Session, document_id: str) -> list[str]:
 
 
 def _to_hit(db: Session, doc: Document) -> DocumentHit:
-    domain_names = _domain_names(db, doc.id)
     return DocumentHit(
         document_id=doc.id,
         name=doc.name,
         type=doc.type,
         status=doc.status,
-        domains=domain_names,
+        domains=_domain_names(db, doc.id),
         sensitive=doc.sensitive,
         created_at=doc.created_at,
     )
+
+
+def _audit_search(db: Session, body: SearchIn, user: User | None, api_key: ApiKey | None, total: int) -> None:
+    write_audit(
+        db,
+        action="search",
+        subject=(user.username if user else api_key.name),
+        query_summary=f"q={body.q}, type={body.type}, domain={body.domain}",
+        hit_count=total,
+        sensitive_hit=body.domain is not None,
+    )
+    db.commit()
 
 
 @router.post("/search", response_model=SearchOut)
@@ -55,6 +67,7 @@ def search(
 
     allowed = allowed_domain_ids(db, user, api_key)
     if not allowed:
+        _audit_search(db, body, user, api_key, 0)
         return SearchOut(items=[], total=0, page=body.page, limit=body.limit)
 
     filters = []
@@ -73,21 +86,24 @@ def search(
 
     if body.domain:
         domain_ids = [d.id for d in db.scalars(select(Domain).where(Domain.name == body.domain)).all()]
-        filters.append(Document.id.in_(select(DocumentDomain.document_id).where(DocumentDomain.domain_id.in_(domain_ids))))
+        filters.append(
+            Document.id.in_(select(DocumentDomain.document_id).where(DocumentDomain.domain_id.in_(domain_ids)))
+        )
 
     if body.q:
         like = f"%{body.q}%"
-        filters.append(Document.id.in_(select(ExtractedContent.document_id).where(ExtractedContent.text.ilike(like))))
+        filters.append(
+            Document.id.in_(select(ExtractedContent.document_id).where(ExtractedContent.text.ilike(like)))
+        )
 
     forbidden = select(DocumentDomain.document_id).where(DocumentDomain.domain_id.not_in(allowed))
     filters.append(Document.id.not_in(forbidden))
 
     stmt = select(Document).where(*filters).order_by(Document.created_at.desc())
     total = len(list(db.scalars(stmt).all()))
-    items = db.scalars(
-        stmt.offset((body.page - 1) * body.limit).limit(body.limit)
-    ).all()
+    items = db.scalars(stmt.offset((body.page - 1) * body.limit).limit(body.limit)).all()
 
+    _audit_search(db, body, user, api_key, total)
     return SearchOut(
         items=[_to_hit(db, d) for d in items],
         total=total,

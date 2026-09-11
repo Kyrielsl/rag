@@ -6,6 +6,7 @@ from sqlalchemy import select
 import app.models  # noqa: F401  确保模型注册到 Base.metadata
 from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
+from app.api.console import router as console_router
 from app.api.health import router as health_router
 from app.api.search import router as search_router
 from app.api.uploads import router as uploads_router
@@ -49,6 +50,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(admin_router)
     app.include_router(search_router)
+    app.include_router(console_router)
     return app
 
 

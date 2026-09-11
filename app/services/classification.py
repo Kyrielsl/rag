@@ -10,6 +10,7 @@ from app.models.classification import ClassificationRun, DocumentDomain
 from app.models.document import Document
 from app.models.domain import Domain
 from app.models.extraction import ExtractedContent
+from app.services.audit import write_audit
 
 DEFAULT_DOMAINS = [("客户", True), ("产品", False), ("合同", True), ("通用", False)]
 SINGLE_THRESHOLD = 0.7
@@ -103,6 +104,7 @@ def run_classification(db: Session, document: Document) -> ClassificationRun:
         status="fallback" if fallback else "success",
     )
     db.add(run)
+    write_audit(db, action="classify", subject="system", object_id=document.id, result=run.status)
     db.commit()
     db.refresh(run)
     return run

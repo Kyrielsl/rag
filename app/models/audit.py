@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.session import Base
@@ -15,5 +15,8 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(64), index=True)
     object_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     result: Mapped[str] = mapped_column(String(16), default="success")
+    query_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hit_count: Mapped[int] = mapped_column(Integer, default=0)
+    sensitive_hit: Mapped[bool] = mapped_column(Boolean, default=False)
     ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
