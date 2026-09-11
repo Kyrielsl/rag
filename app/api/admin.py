@@ -8,8 +8,28 @@ from app.db.session import get_db
 from app.models.auth import ApiKey, ApiKeyDomainGrant, User, UserDomainGrant
 from app.models.domain import Domain
 from app.schemas.auth import ApiKeyCreateIn, ApiKeyOut, GrantIn
+from app.schemas.console import ApiKeyListItem
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+@router.get("/api-keys", response_model=list[ApiKeyListItem])
+def list_api_keys(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> list[ApiKeyListItem]:
+    keys = db.scalars(select(ApiKey).order_by(ApiKey.created_at.desc())).all()
+    return [
+        ApiKeyListItem(
+            id=k.id,
+            name=k.name,
+            scope=k.scope,
+            status=k.status,
+            expires_at=k.expires_at,
+            created_at=k.created_at,
+        )
+        for k in keys
+    ]
 
 
 @router.post("/api-keys", response_model=ApiKeyOut)

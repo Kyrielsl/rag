@@ -35,3 +35,42 @@ class DomainCreateIn(BaseModel):
 class DomainUpdateIn(BaseModel):
     enabled: bool | None = None
     is_sensitive: bool | None = None
+
+
+class ApiKeyListItem(BaseModel):
+    id: str
+    name: str
+    scope: str
+    status: str
+    expires_at: datetime | None
+    created_at: datetime
+
+
+class ExtractedContentOut(BaseModel):
+    text: str
+    fields: dict | None
+    rows: list | None
+    encoding: str | None
+    delimiter: str | None
+    warnings: list | None
+
+
+class DomainAssignmentOut(BaseModel):
+    domain: str
+    confidence: float
+    source: str
+
+
+class AdminDocumentDetail(BaseModel):
+    document_id: str
+    name: str
+    type: str
+    size: int
+    sha256: str
+    status: str
+    extracted_status: str
+    needs_review: bool
+    sensitive: bool
+    created_at: datetime
+    domains: list[DomainAssignmentOut]
+    content: ExtractedContentOut | None

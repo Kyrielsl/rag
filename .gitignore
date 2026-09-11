@@ -32,6 +32,10 @@ storage/
 # TLS certificates (local-only)
 deploy/certs/
 
+# Frontend
+web/node_modules/
+web/dist/
+
 # Project docs & domain model (local-only)
 docs/
 CONTEXT.md

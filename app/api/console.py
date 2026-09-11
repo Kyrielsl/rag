@@ -4,12 +4,22 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import require_admin
 from app.db.session import get_db
-from app.models.auth import ApiKey, User
+from app.models.auth import ApiKey
 from app.models.audit import AuditLog
 from app.models.classification import DocumentDomain
 from app.models.document import Document
 from app.models.domain import Domain
-from app.schemas.console import AuditItem, DashboardOut, DomainCreateIn, DomainUpdateIn, ReviewIn
+from app.models.extraction import ExtractedContent
+from app.schemas.console import (
+    AdminDocumentDetail,
+    AuditItem,
+    DashboardOut,
+    DomainAssignmentOut,
+    DomainCreateIn,
+    DomainUpdateIn,
+    ExtractedContentOut,
+    ReviewIn,
+)
 from app.schemas.search import DocumentHit
 
 router = APIRouter(prefix="/admin", tags=["admin-console"], dependencies=[Depends(require_admin)])
@@ -76,6 +86,46 @@ def list_documents(
         stmt = stmt.where(Document.needs_review == needs_review)
     docs = db.scalars(stmt.offset(offset).limit(limit)).all()
     return [_to_hit(db, d) for d in docs]
+
+
+@router.get("/documents/{document_id}", response_model=AdminDocumentDetail)
+def get_document_detail(document_id: str, db: Session = Depends(get_db)) -> AdminDocumentDetail:
+    doc = db.get(Document, document_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="document not found")
+
+    assignments = db.execute(
+        select(Domain.name, DocumentDomain.confidence, DocumentDomain.source)
+        .join(DocumentDomain, DocumentDomain.domain_id == Domain.id)
+        .where(DocumentDomain.document_id == document_id)
+    ).all()
+
+    content = db.scalar(select(ExtractedContent).where(ExtractedContent.document_id == document_id))
+    return AdminDocumentDetail(
+        document_id=doc.id,
+        name=doc.name,
+        type=doc.type,
+        size=doc.size,
+        sha256=doc.sha256,
+        status=doc.status,
+        extracted_status=doc.extracted_status,
+        needs_review=doc.needs_review,
+        sensitive=doc.sensitive,
+        created_at=doc.created_at,
+        domains=[DomainAssignmentOut(domain=n, confidence=c, source=s) for n, c, s in assignments],
+        content=(
+            ExtractedContentOut(
+                text=content.text,
+                fields=content.fields,
+                rows=content.rows,
+                encoding=content.encoding,
+                delimiter=content.delimiter,
+                warnings=content.warnings,
+            )
+            if content
+            else None
+        ),
+    )
 
 
 @router.get("/review-queue", response_model=list[DocumentHit])
